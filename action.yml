@@ -1,0 +1,84 @@
+name: Generate Changelog Fragment
+description: >-
+  Generate a per-PR changelog fragment from commits using git-cliff, stamp it
+  with the PR title, and commit it to the PR branch. Idempotent: if the fragment
+  already exists it is left untouched.
+
+inputs:
+  pr-number:
+    description: Pull request number; used to name the fragment file.
+    required: true
+  pr-title:
+    description: Pull request title; injected as an HTML comment so the merge step can group by PR.
+    required: false
+    default: ""
+  config:
+    description: Path to the git-cliff config file (project-local).
+    required: false
+    default: cliff.toml
+  fragments-dir:
+    description: Directory to write the fragment into.
+    required: false
+    default: changelog
+  commit:
+    description: Whether to commit and push the generated fragment.
+    required: false
+    default: "true"
+  commit-message:
+    description: Commit message used when committing the fragment.
+    required: false
+    default: Generating changelog fragment
+
+outputs:
+  fragment-path:
+    description: Path to the fragment file for this PR.
+    value: ${{ steps.paths.outputs.fragment-path }}
+  created:
+    description: "'true' if a new fragment was generated, 'false' if it already existed."
+    value: ${{ steps.paths.outputs.exists == 'false' }}
+
+runs:
+  using: composite
+  steps:
+    - name: Resolve fragment path
+      id: paths
+      shell: bash
+      env:
+        FRAGMENTS_DIR: ${{ inputs.fragments-dir }}
+        PR_NUMBER: ${{ inputs.pr-number }}
+      run: |
+        mkdir -p "$FRAGMENTS_DIR"
+        FRAGMENT="$FRAGMENTS_DIR/$PR_NUMBER-CHANGES.md"
+        echo "fragment-path=$FRAGMENT" >> "$GITHUB_OUTPUT"
+        if [ -f "$FRAGMENT" ]; then
+          echo "exists=true" >> "$GITHUB_OUTPUT"
+        else
+          echo "exists=false" >> "$GITHUB_OUTPUT"
+        fi
+
+    - name: Generate changelog fragment
+      if: steps.paths.outputs.exists == 'false'
+      uses: orhun/git-cliff-action@v4.6.0
+      with:
+        config: ${{ inputs.config }}
+        args: --unreleased
+      env:
+        OUTPUT: ${{ steps.paths.outputs.fragment-path }}
+        GITHUB_REPO: ${{ github.repository }}
+
+    - name: Add PR title to changelog fragment
+      if: steps.paths.outputs.exists == 'false' && inputs.pr-title != ''
+      shell: bash
+      env:
+        FRAGMENT: ${{ steps.paths.outputs.fragment-path }}
+        PR_TITLE: ${{ inputs.pr-title }}
+      run: |
+        TMP_FILE="$(mktemp)"
+        awk -v title="$PR_TITLE" '{print} /^## \[Unreleased\]/{print "<!-- title: " title " -->"}' "$FRAGMENT" > "$TMP_FILE" && mv "$TMP_FILE" "$FRAGMENT"
+
+    - name: Commit and push changelog fragment
+      if: steps.paths.outputs.exists == 'false' && inputs.commit == 'true'
+      uses: EndBug/add-and-commit@v9
+      with:
+        add: ${{ steps.paths.outputs.fragment-path }}
+        message: ${{ inputs.commit-message }}
