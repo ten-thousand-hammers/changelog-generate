@@ -40,6 +40,7 @@ jobs:
 | `pr-title` | `""` | PR title, injected as `<!-- title: ... -->` so the merge step can group by PR. |
 | `config` | `cliff.toml` | git-cliff config path (project-local). |
 | `fragments-dir` | `changelog` | Directory the fragment is written to. |
+| `git-cliff-version` | `2.12.0` | Version of the prebuilt git-cliff binary to install. |
 | `commit` | `"true"` | Commit and push the fragment to the PR branch. |
 | `commit-message` | `Generating changelog fragment` | Commit message. |
 
@@ -60,5 +61,7 @@ jobs:
   action.
 - The PR title is passed to `awk` via an environment variable, never interpolated
   into the shell, to avoid script injection from crafted PR titles.
-- `git-cliff` is pinned to `orhun/git-cliff-action@v4.6.0` inside the action
-  (composite `uses:` refs cannot be parameterized).
+- git-cliff is installed via
+  [`setup-git-cliff`](https://github.com/ten-thousand-hammers/setup-git-cliff) — a
+  pinned, **prebuilt** binary (no Rust build, no Dependabot pinning fights),
+  controlled by the `git-cliff-version` input.

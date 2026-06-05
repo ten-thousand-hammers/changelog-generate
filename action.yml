@@ -20,6 +20,10 @@ inputs:
     description: Directory to write the fragment into.
     required: false
     default: changelog
+  git-cliff-version:
+    description: Version of the prebuilt git-cliff binary to install.
+    required: false
+    default: "2.12.0"
   commit:
     description: Whether to commit and push the generated fragment.
     required: false
@@ -56,15 +60,19 @@ runs:
           echo "exists=false" >> "$GITHUB_OUTPUT"
         fi
 
+    - name: Install git-cliff
+      if: steps.paths.outputs.exists == 'false'
+      uses: ten-thousand-hammers/setup-git-cliff@v1
+      with:
+        version: ${{ inputs.git-cliff-version }}
+
     - name: Generate changelog fragment
       if: steps.paths.outputs.exists == 'false'
-      uses: orhun/git-cliff-action@v4.6.0
-      with:
-        config: ${{ inputs.config }}
-        args: --unreleased
+      shell: bash
       env:
+        CONFIG: ${{ inputs.config }}
         OUTPUT: ${{ steps.paths.outputs.fragment-path }}
-        GITHUB_REPO: ${{ github.repository }}
+      run: git-cliff --config "$CONFIG" --unreleased -o "$OUTPUT"
 
     - name: Add PR title to changelog fragment
       if: steps.paths.outputs.exists == 'false' && inputs.pr-title != ''
