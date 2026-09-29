@@ -41,6 +41,7 @@ jobs:
 | --- | --- | --- |
 | `pr-number` | _(required)_ | PR number; names the fragment `{fragments-dir}/{pr-number}-CHANGES.md`. |
 | `pr-title` | `""` | PR title, injected as `<!-- title: ... -->` so the merge step can group by PR. |
+| `base-ref` | `${{ github.base_ref }}` | Branch the PR targets. The fragment covers only commits since the PR branched from it. Empty or unresolvable (fork PR, shallow checkout) falls back to every commit since the last tag, with a warning. |
 | `config` | `cliff.toml` | git-cliff config path (project-local). |
 | `fragments-dir` | `changelog` | Directory the fragment is written to. |
 | `git-cliff-version` | `2.12.0` | Version of the prebuilt git-cliff binary to install. |
