@@ -10,7 +10,10 @@ Part of the changelog actions suite:
 ## Usage
 
 Run on pull requests. The repository must already be checked out at the PR head
-with full history (`fetch-depth: 0`) so git-cliff can read commits:
+with full history (`fetch-depth: 0`) so git-cliff can read commits.
+The fragment covers only the commits between where the PR branched from its
+base branch (`base-ref`, default `github.base_ref`) and the PR head, so commits
+that earlier PRs merged but no release has tagged yet stay out of it:
 
 ```yaml
 jobs:
