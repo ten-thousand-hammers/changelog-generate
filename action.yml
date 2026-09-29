@@ -32,6 +32,12 @@ inputs:
       every commit since the last tag (git-cliff --unreleased).
     required: false
     default: ${{ github.base_ref }}
+  base-repository:
+    description: >-
+      owner/repo that base-ref lives in. For a fork PR the checkout's origin is
+      the fork, so the base branch is fetched from here instead.
+    required: false
+    default: ${{ github.repository }}
   commit:
     description: Whether to commit and push the generated fragment.
     required: false
@@ -81,6 +87,7 @@ runs:
         CONFIG: ${{ inputs.config }}
         OUTPUT: ${{ steps.paths.outputs.fragment-path }}
         BASE_REF: ${{ inputs.base-ref }}
+        BASE_REPOSITORY: ${{ inputs.base-repository }}
       run: |
         set -euo pipefail
         if [ -z "$BASE_REF" ]; then
@@ -90,11 +97,14 @@ runs:
         fi
         # --unreleased would also pick up commits that earlier PRs merged into
         # the base branch but that no release tag covers yet.
-        if git fetch --no-tags --quiet origin "+refs/heads/$BASE_REF:refs/remotes/origin/$BASE_REF" &&
-          BASE_SHA="$(git merge-base "refs/remotes/origin/$BASE_REF" HEAD)"; then
+        # Fetch from the target repository, not origin: for a fork PR origin is
+        # the fork, whose own branch of that name is not the PR's base.
+        BASE_TRACKING_REF="refs/changelog-generate/base"
+        if git fetch --no-tags --quiet "$GITHUB_SERVER_URL/$BASE_REPOSITORY.git" "+refs/heads/$BASE_REF:$BASE_TRACKING_REF" &&
+          BASE_SHA="$(git merge-base "$BASE_TRACKING_REF" HEAD)"; then
           git-cliff --config "$CONFIG" "$BASE_SHA..HEAD" -o "$OUTPUT"
         else
-          echo "::warning::Could not find where HEAD branched from origin/$BASE_REF (fork PR or shallow checkout?); the fragment covers every commit since the last tag instead."
+          echo "::warning::Could not find where HEAD branched from $BASE_REPOSITORY@$BASE_REF (shallow checkout or no access?); the fragment covers every commit since the last tag instead."
           git-cliff --config "$CONFIG" --unreleased -o "$OUTPUT"
         fi
 
