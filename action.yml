@@ -24,6 +24,20 @@ inputs:
     description: Version of the prebuilt git-cliff binary to install.
     required: false
     default: "2.12.0"
+  base-ref:
+    description: >-
+      Branch the pull request targets. The fragment covers only the commits
+      between where the PR branched from it and the PR head, so commits merged
+      by earlier PRs but not yet released are left out. Empty falls back to
+      every commit since the last tag (git-cliff --unreleased).
+    required: false
+    default: ${{ github.base_ref }}
+  base-repository:
+    description: >-
+      owner/repo that base-ref lives in. For a fork PR the checkout's origin is
+      the fork, so the base branch is fetched from here instead.
+    required: false
+    default: ${{ github.repository }}
   commit:
     description: Whether to commit and push the generated fragment.
     required: false
@@ -72,7 +86,27 @@ runs:
       env:
         CONFIG: ${{ inputs.config }}
         OUTPUT: ${{ steps.paths.outputs.fragment-path }}
-      run: git-cliff --config "$CONFIG" --unreleased -o "$OUTPUT"
+        BASE_REF: ${{ inputs.base-ref }}
+        BASE_REPOSITORY: ${{ inputs.base-repository }}
+      run: |
+        set -euo pipefail
+        if [ -z "$BASE_REF" ]; then
+          echo "::warning::No base-ref (not a pull_request event?); the fragment covers every commit since the last tag, which can include other unreleased PRs."
+          git-cliff --config "$CONFIG" --unreleased -o "$OUTPUT"
+          exit 0
+        fi
+        # --unreleased would also pick up commits that earlier PRs merged into
+        # the base branch but that no release tag covers yet.
+        # Fetch from the target repository, not origin: for a fork PR origin is
+        # the fork, whose own branch of that name is not the PR's base.
+        BASE_TRACKING_REF="refs/changelog-generate/base"
+        if git fetch --no-tags --quiet "$GITHUB_SERVER_URL/$BASE_REPOSITORY.git" "+refs/heads/$BASE_REF:$BASE_TRACKING_REF" &&
+          BASE_SHA="$(git merge-base "$BASE_TRACKING_REF" HEAD)"; then
+          git-cliff --config "$CONFIG" "$BASE_SHA..HEAD" -o "$OUTPUT"
+        else
+          echo "::warning::Could not find where HEAD branched from $BASE_REPOSITORY@$BASE_REF (shallow checkout or no access?); the fragment covers every commit since the last tag instead."
+          git-cliff --config "$CONFIG" --unreleased -o "$OUTPUT"
+        fi
 
     - name: Add PR title to changelog fragment
       if: steps.paths.outputs.exists == 'false' && inputs.pr-title != ''
