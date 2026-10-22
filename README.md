@@ -48,18 +48,21 @@ jobs:
 | `git-cliff-version` | `2.12.0` | Version of the prebuilt git-cliff binary to install. |
 | `commit` | `"true"` | Commit and push the fragment to the PR branch. |
 | `commit-message` | `Generating changelog fragment` | Commit message. |
+| `refresh` | `"false"` | Regenerate an existing fragment on each run so later commits are included, unless it was edited by hand (its last commit isn't `commit-message`). Needs `fetch-depth: 0`. |
 
 ## Outputs
 
 | Name | Description |
 | --- | --- |
 | `fragment-path` | Path to this PR's fragment file. |
-| `created` | `'true'` if a new fragment was generated, `'false'` if it already existed. |
+| `created` | `'true'` if a fragment was generated (new or refreshed), `'false'` if an existing one was kept. |
 
 ## Notes
 
 - **Idempotent.** If the fragment already exists (e.g. a later push to the same
-  PR), it is left untouched, so manual edits to it survive.
+  PR), it is left untouched, so manual edits to it survive. With `refresh: true`
+  it is regenerated instead, until someone edits it by hand; an unchanged
+  result makes no commit.
 - **Fork PRs.** When the `CHANGELOG_TOKEN` secret is unavailable (PRs from forks),
   the commit step is best-effort — it cannot push to the fork. Keep the
   fork-aware `actions/checkout` in the caller (as shown) rather than inside the
