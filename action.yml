@@ -2,7 +2,8 @@ name: Generate Changelog Fragment
 description: >-
   Generate a per-PR changelog fragment from commits using git-cliff, stamp it
   with the PR title, and commit it to the PR branch. Idempotent: if the fragment
-  already exists it is left untouched.
+  already exists it is left untouched, unless refresh is on and nobody has
+  edited it.
 
 inputs:
   pr-number:
@@ -46,14 +47,22 @@ inputs:
     description: Commit message used when committing the fragment.
     required: false
     default: Generating changelog fragment
+  refresh:
+    description: >-
+      Regenerate an existing fragment on each run, so commits pushed after it
+      was written are included, as long as the last commit to touch it has
+      commit-message (nobody has edited it by hand). Needs the fragment's
+      history, e.g. a checkout with fetch-depth 0.
+    required: false
+    default: "false"
 
 outputs:
   fragment-path:
     description: Path to the fragment file for this PR.
     value: ${{ steps.paths.outputs.fragment-path }}
   created:
-    description: "'true' if a new fragment was generated, 'false' if it already existed."
-    value: ${{ steps.paths.outputs.exists == 'false' }}
+    description: "'true' if a fragment was generated (new or refreshed), 'false' if an existing one was kept."
+    value: ${{ steps.paths.outputs.generate == 'true' }}
 
 runs:
   using: composite
@@ -64,24 +73,30 @@ runs:
       env:
         FRAGMENTS_DIR: ${{ inputs.fragments-dir }}
         PR_NUMBER: ${{ inputs.pr-number }}
+        REFRESH: ${{ inputs.refresh }}
+        COMMIT_MESSAGE: ${{ inputs.commit-message }}
       run: |
         mkdir -p "$FRAGMENTS_DIR"
         FRAGMENT="$FRAGMENTS_DIR/$PR_NUMBER-CHANGES.md"
         echo "fragment-path=$FRAGMENT" >> "$GITHUB_OUTPUT"
-        if [ -f "$FRAGMENT" ]; then
-          echo "exists=true" >> "$GITHUB_OUTPUT"
+        if [ ! -f "$FRAGMENT" ]; then
+          echo "generate=true" >> "$GITHUB_OUTPUT"
+        elif [ "$REFRESH" = "true" ] && [ "$(git log -1 --format=%s -- "$FRAGMENT")" = "$COMMIT_MESSAGE" ]; then
+          echo "Refreshing $FRAGMENT: nobody has edited it since it was generated."
+          rm "$FRAGMENT"
+          echo "generate=true" >> "$GITHUB_OUTPUT"
         else
-          echo "exists=false" >> "$GITHUB_OUTPUT"
+          echo "generate=false" >> "$GITHUB_OUTPUT"
         fi
 
     - name: Install git-cliff
-      if: steps.paths.outputs.exists == 'false'
+      if: steps.paths.outputs.generate == 'true'
       uses: ten-thousand-hammers/setup-git-cliff@v1
       with:
         version: ${{ inputs.git-cliff-version }}
 
     - name: Generate changelog fragment
-      if: steps.paths.outputs.exists == 'false'
+      if: steps.paths.outputs.generate == 'true'
       shell: bash
       env:
         CONFIG: ${{ inputs.config }}
@@ -109,7 +124,7 @@ runs:
         fi
 
     - name: Add PR title to changelog fragment
-      if: steps.paths.outputs.exists == 'false' && inputs.pr-title != ''
+      if: steps.paths.outputs.generate == 'true' && inputs.pr-title != ''
       shell: bash
       env:
         FRAGMENT: ${{ steps.paths.outputs.fragment-path }}
@@ -119,7 +134,7 @@ runs:
         awk -v title="$PR_TITLE" '{print} /^## \[Unreleased\]/{print "<!-- title: " title " -->"}' "$FRAGMENT" > "$TMP_FILE" && mv "$TMP_FILE" "$FRAGMENT"
 
     - name: Commit and push changelog fragment
-      if: steps.paths.outputs.exists == 'false' && inputs.commit == 'true'
+      if: steps.paths.outputs.generate == 'true' && inputs.commit == 'true'
       uses: EndBug/add-and-commit@v9
       with:
         add: ${{ steps.paths.outputs.fragment-path }}
