@@ -112,7 +112,10 @@ runs:
       run: |
         ref="$BASE_REF"
         if [ -z "$ref" ] && [ -n "$GH_TOKEN" ]; then
-          ref="$(gh api "repos/$BASE_REPOSITORY/pulls/$PR_NUMBER" --jq .base.ref 2>/dev/null || true)"
+          # GITHUB_API_URL points at the server running the workflow, so this
+          # also works on GitHub Enterprise Server, where gh defaults to github.com.
+          ref="$(curl -fsSL -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" \
+            "$GITHUB_API_URL/repos/$BASE_REPOSITORY/pulls/$PR_NUMBER" 2>/dev/null | jq -r '.base.ref // empty' || true)"
           [ -n "$ref" ] || echo "::warning::Could not read the base branch of $BASE_REPOSITORY#$PR_NUMBER from the API; using github.base_ref."
         fi
         [ -n "$ref" ] || ref="$EVENT_BASE_REF"
